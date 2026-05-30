@@ -77,6 +77,35 @@ async function extractZips() {
     });
 
     client.on('interactionCreate', async (interaction) => {
+        if (interaction.isButton()) {
+            if (interaction.customId.startsWith('accept_rules:')) {
+                const roleIds = interaction.customId.slice('accept_rules:'.length).split(',').filter(Boolean);
+                const member = interaction.member;
+                const failed = [];
+
+                for (const roleId of roleIds) {
+                    try {
+                        await member.roles.add(roleId);
+                    } catch {
+                        failed.push(roleId);
+                    }
+                }
+
+                if (failed.length > 0) {
+                    await interaction.reply({
+                        content: `⚠️ Règlement accepté, mais certains rôles n'ont pas pu être attribués (${failed.length} erreur(s)).`,
+                        ephemeral: true
+                    });
+                } else {
+                    await interaction.reply({
+                        content: '✅ Règlement accepté ! Les rôles vous ont été attribués.',
+                        ephemeral: true
+                    });
+                }
+            }
+            return;
+        }
+
         if (!interaction.isChatInputCommand()) return;
         const command = client.commands.get(interaction.commandName);
         if (!command) return;

@@ -77,6 +77,45 @@ async function extractZips() {
     });
 
     client.on('interactionCreate', async (interaction) => {
+        // Button: rules_accept_<roleIds>
+        if (interaction.isButton() && interaction.customId.startsWith('rules_accept_')) {
+            const roleIds = interaction.customId.slice('rules_accept_'.length).split(',').filter(Boolean);
+            const member = interaction.member;
+
+            if (!member) {
+                return interaction.reply({ content: '❌ Impossible de récupérer votre profil.', ephemeral: true });
+            }
+
+            try {
+                const assigned = [];
+                const alreadyHad = [];
+
+                for (const roleId of roleIds) {
+                    const role = interaction.guild.roles.cache.get(roleId);
+                    if (!role) continue;
+                    if (member.roles.cache.has(roleId)) {
+                        alreadyHad.push(role.toString());
+                    } else {
+                        await member.roles.add(role, 'Acceptation du règlement');
+                        assigned.push(role.toString());
+                    }
+                }
+
+                const lines = [];
+                if (assigned.length > 0) lines.push(`✅ Rôle(s) attribué(s) : ${assigned.join(', ')}`);
+                if (alreadyHad.length > 0) lines.push(`ℹ️ Rôle(s) déjà possédé(s) : ${alreadyHad.join(', ')}`);
+                if (lines.length === 0) lines.push('ℹ️ Aucun rôle à attribuer.');
+
+                await interaction.reply({ content: lines.join('\n'), ephemeral: true });
+            } catch (err) {
+                console.error('[RULES BUTTON ERROR]', err.message);
+                const msg = { content: `❌ Impossible d'attribuer les rôles : ${err.message}`, ephemeral: true };
+                if (interaction.replied || interaction.deferred) await interaction.followUp(msg).catch(() => {});
+                else await interaction.reply(msg).catch(() => {});
+            }
+            return;
+        }
+
         if (!interaction.isChatInputCommand()) return;
         const command = client.commands.get(interaction.commandName);
         if (!command) return;

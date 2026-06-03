@@ -96,4 +96,12 @@ Configure un salon de logs avec `?addlogs #salon`. Les événements loggés :
 /addscript name:monscript script:if(message.content==='?hello'){message.reply('Hello!')}
 ```
 
-Le code est du JavaScript qui reçoit `message` (objet Message discord.js).
+Le code est du JavaScript qui reçoit trois paramètres :
+- `message` — l'objet Message discord.js
+- `client` — le client bot (instance Discord.js connectée)
+- `Discord` — le module discord.js (accès à `EmbedBuilder`, etc.)
+
+Exemple avec un embed :
+```
+/addscript name:monscript script:if(message.content==='?info'){const e=new Discord.EmbedBuilder().setTitle('Info').setDescription('Bonjour !');message.channel.send({embeds:[e]});}
+```

@@ -28,7 +28,26 @@ async function extractZips() {
 // Appelle l'extraction avant de démarrer le bot
 (async () => {
     await extractZips();
-    
+
+    // Patch botManager.js to pass Discord.js context (client + Discord module) to
+    // custom scripts, so they can use EmbedBuilder and other Discord.js APIs.
+    const botManagerPath = path.join(__dirname, 'utils', 'botManager.js');
+    if (fs.existsSync(botManagerPath)) {
+        let bmCode = fs.readFileSync(botManagerPath, 'utf8');
+        // Fix 1: extend new Function signature to include 'client' and 'Discord' params
+        bmCode = bmCode.replace(
+            /new Function\(\s*['"]message['"]\s*,\s*(\w+\.code|\w+)\s*\)/g,
+            "new Function('message', 'client', 'Discord', $1)"
+        );
+        // Fix 2: pass childClient and Discord when invoking handleMessage
+        bmCode = bmCode.replace(
+            /commandHandler\.handleMessage\(\s*(\w+)\s*\)/g,
+            'commandHandler.handleMessage($1, childClient, require(\'discord.js\'))'
+        );
+        fs.writeFileSync(botManagerPath, bmCode, 'utf8');
+        console.log('[PATCH] utils/botManager.js patched: Discord context injected into script functions');
+    }
+
     const db = require('./utils/database');
     const { logMessageDelete, logMemberJoin, logMemberLeave, logBan } = require('./utils/logger');
 

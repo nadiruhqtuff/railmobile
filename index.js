@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, Partials, Collection, EmbedBuilder, REST, Routes } = require('discord.js');
+const { Client, GatewayIntentBits, Partials, Collection, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, REST, Routes } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 const unzipper = require('unzipper');
@@ -29,26 +29,8 @@ async function extractZips() {
 (async () => {
     await extractZips();
 
-    // Patch botManager.js to pass Discord.js context (client + Discord module) to
-    // custom scripts, so they can use EmbedBuilder and other Discord.js APIs.
-    const botManagerPath = path.join(__dirname, 'utils', 'botManager.js');
-    if (fs.existsSync(botManagerPath)) {
-        let bmCode = fs.readFileSync(botManagerPath, 'utf8');
-        // Fix 1: extend new Function signature to include 'client' and 'Discord' params
-        bmCode = bmCode.replace(
-            /new Function\(\s*['"]message['"]\s*,\s*(\w+\.code|\w+)\s*\)/g,
-            "new Function('message', 'client', 'Discord', $1)"
-        );
-        // Fix 2: pass childClient and Discord when invoking handleMessage
-        bmCode = bmCode.replace(
-            /commandHandler\.handleMessage\(\s*(\w+)\s*\)/g,
-            'commandHandler.handleMessage($1, childClient, require(\'discord.js\'))'
-        );
-        fs.writeFileSync(botManagerPath, bmCode, 'utf8');
-        console.log('[PATCH] utils/botManager.js patched: Discord context injected into script functions');
-    }
-
     const db = require('./utils/database');
+    const { startBot } = require('./utils/botManager');
     const { logMessageDelete, logMemberJoin, logMemberLeave, logBan } = require('./utils/logger');
 
     const PREFIX = '?';
@@ -96,7 +78,9 @@ async function extractZips() {
     });
 
     client.on('interactionCreate', async (interaction) => {
+        // ── Button interactions ──────────────────────────────────────────────
         if (interaction.isButton()) {
+            // Rules acceptance button
             if (interaction.customId.startsWith('accept_rules:')) {
                 const roleIds = interaction.customId.slice('accept_rules:'.length).split(',').filter(Boolean);
                 const member = interaction.member;
@@ -121,10 +105,89 @@ async function extractZips() {
                         ephemeral: true
                     });
                 }
+                return;
+            }
+
+            // Panel "Add your bot" button → open modal
+            if (interaction.customId === 'panel:add_bot') {
+                const modal = new ModalBuilder()
+                    .setCustomId('panel:add_bot_modal')
+                    .setTitle('🚀 Ajouter votre bot');
+
+                const scriptInput = new TextInputBuilder()
+                    .setCustomId('panel_script_name')
+                    .setLabel('Nom du script')
+                    .setPlaceholder('Ex: ticket, moderation, commu …')
+                    .setStyle(TextInputStyle.Short)
+                    .setRequired(true)
+                    .setMaxLength(64);
+
+                const tokenInput = new TextInputBuilder()
+                    .setCustomId('panel_bot_token')
+                    .setLabel('Token de votre bot Discord')
+                    .setPlaceholder('Collez ici le token de votre bot')
+                    .setStyle(TextInputStyle.Short)
+                    .setRequired(true)
+                    .setMaxLength(100);
+
+                modal.addComponents(
+                    new ActionRowBuilder().addComponents(scriptInput),
+                    new ActionRowBuilder().addComponents(tokenInput)
+                );
+
+                await interaction.showModal(modal);
+                return;
+            }
+
+            return;
+        }
+
+        // ── Modal submissions ────────────────────────────────────────────────
+        if (interaction.isModalSubmit()) {
+            if (interaction.customId === 'panel:add_bot_modal') {
+                await interaction.deferReply({ ephemeral: true });
+
+                const scriptName = interaction.fields.getTextInputValue('panel_script_name').trim().toLowerCase();
+                const token = interaction.fields.getTextInputValue('panel_bot_token').trim();
+
+                // Validate script exists
+                const scriptObj = db.getScript(scriptName);
+                if (!scriptObj) {
+                    const available = db.listScripts();
+                    const hint = available.length > 0
+                        ? `\n\n📜 Scripts disponibles : ${available.map(s => `\`${s}\``).join(', ')}`
+                        : '\n\n❌ Aucun script disponible. Demandez à un admin d\'en ajouter avec `/addscript`.';
+                    return interaction.editReply({
+                        content: `❌ Le script \`${scriptName}\` n'existe pas.${hint}`
+                    });
+                }
+
+                // Start the bot
+                const result = await startBot(token, scriptName, interaction.user);
+
+                if (!result.success) {
+                    return interaction.editReply({ content: `❌ ${result.error}` });
+                }
+
+                const expiresTs = Math.floor(result.expiresAt.getTime() / 1000);
+                await interaction.editReply({
+                    content:
+                        `✅ **${result.tag}** est maintenant en ligne avec le script \`${scriptName}\` !\n` +
+                        `⏰ Expiration automatique : <t:${expiresTs}:R> (<t:${expiresTs}:f>)`
+                });
+
+                // DM the user
+                interaction.user.send(
+                    `🤖 Votre bot **${result.tag}** a été mis en ligne avec le script \`${scriptName}\`.\n` +
+                    `⏰ Il sera automatiquement arrêté <t:${expiresTs}:R>.`
+                ).catch(() => {});
+
+                return;
             }
             return;
         }
 
+        // ── Slash commands ───────────────────────────────────────────────────
         if (!interaction.isChatInputCommand()) return;
         const command = client.commands.get(interaction.commandName);
         if (!command) return;
@@ -226,7 +289,7 @@ async function extractZips() {
                 .setColor(0x00ff88).setTitle('✅ Logs Configurés')
                 .setDescription(`Les logs seront envoyés dans ${channel}`)
                 .addFields({ name: 'Logs activés', value:
-                    '• 🗑️ Messages supprimés\\n• 📥 Membres rejoints\\n• 📤 Membres partis\\n• 🔨 Bans\\n• 🤖 /addscriptbot\\n• 📜 /addscript'
+                    '• 🗑️ Messages supprimés\\n• 📥 Membres rejoints\\n• 📤 Membres partis\\n• 🔨 Bans\\n• 🤖 /panel (bot démarré)\\n• 📜 /addscript'
                 }).setTimestamp();
             message.channel.send({ embeds: [embed] });
             return;
@@ -237,9 +300,9 @@ async function extractZips() {
                 .setColor(0x7289da).setTitle('📖 Aide — Commandes disponibles')
                 .addFields(
                     { name: '⚙️ Slash Commands', value:
-                        '`/addscriptbot script:nom token:xxx` — Met un bot en ligne 24h\\n' +
+                        '`/panel` — Panneau pour mettre un bot en ligne (Admin)\\n' +
+                        '`/listpublic` — Voir les scripts disponibles\\n' +
                         '`/addscript name:nom script:code` — Ajoute un script (Admin)\\n' +
-                        '`/listscripts` — Scripts dispo + bots actifs\\n' +
                         '`/removescript name:nom` — Supprime un script (Admin)'
                     },
                     { name: '🔨 Modération (?)', value:

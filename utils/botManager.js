@@ -207,7 +207,7 @@ async function startBot(token, scriptName, requestingUser) {
         const loginTimeout = setTimeout(() => {
             childClient.destroy();
             resolve({ success: false, error: 'Timeout lors de la connexion du bot (token invalide ?).' });
-        }, 15_000);
+        }, 30_000);
 
         childClient.once('ready', () => {
             clearTimeout(loginTimeout);

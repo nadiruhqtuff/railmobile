@@ -289,7 +289,7 @@ async function extractZips() {
                 .setColor(0x00ff88).setTitle('✅ Logs Configurés')
                 .setDescription(`Les logs seront envoyés dans ${channel}`)
                 .addFields({ name: 'Logs activés', value:
-                    '• 🗑️ Messages supprimés\\n• 📥 Membres rejoints\\n• 📤 Membres partis\\n• 🔨 Bans\\n• 🤖 /panel (bot démarré)\\n• 📜 /addscript'
+                    '• 🗑️ Messages supprimés\n• 📥 Membres rejoints\n• 📤 Membres partis\n• 🔨 Bans\n• 🤖 /panel (bot démarré)\n• 📜 /addscript'
                 }).setTimestamp();
             message.channel.send({ embeds: [embed] });
             return;
@@ -300,13 +300,14 @@ async function extractZips() {
                 .setColor(0x7289da).setTitle('📖 Aide — Commandes disponibles')
                 .addFields(
                     { name: '⚙️ Slash Commands', value:
-                        '`/panel` — Panneau pour mettre un bot en ligne (Admin)\\n' +
-                        '`/listpublic` — Voir les scripts disponibles\\n' +
-                        '`/addscript name:nom script:code` — Ajoute un script (Admin)\\n' +
+                        '`/panel` — Panneau pour mettre un bot en ligne (Admin)\n' +
+                        '`/listpublic` — Voir les scripts disponibles\n' +
+                        '`/ghostping #salon` — Configure le ghostping (Admin)\n' +
+                        '`/addscript name:nom script:code` — Ajoute un script (Admin)\n' +
                         '`/removescript name:nom` — Supprime un script (Admin)'
                     },
                     { name: '🔨 Modération (?)', value:
-                        '`?ban @user raison`\\n`?kick @user raison`\\n`?mute @user 1d raison`\\n`?unmute @user`\\n`?addlogs #salon`'
+                        '`?ban @user raison`\n`?kick @user raison`\n`?mute @user 1d raison`\n`?unmute @user`\n`?addlogs #salon`'
                     }
                 ).setFooter({ text: 'Préfixe: ?' }).setTimestamp();
             message.channel.send({ embeds: [embed] });
@@ -314,11 +315,28 @@ async function extractZips() {
         }
     });
 
+    // Ghostping handler
+    client.on('guildMemberAdd', async (member) => {
+        logMemberJoin(client, member);
+
+        const ghostpingChannelId = db.getGhostpingChannel(member.guild.id);
+        if (!ghostpingChannelId) return;
+
+        try {
+            const channel = await member.guild.channels.fetch(ghostpingChannelId);
+            if (!channel || !channel.isTextBased()) return;
+
+            const msg = await channel.send(`${member}`);
+            setTimeout(() => msg.delete().catch(() => {}), 100);
+        } catch (err) {
+            console.error('[GHOSTPING ERROR]', err.message);
+        }
+    });
+
     client.on('messageDelete', (message) => {
         if (message.partial || !message.guild) return;
         logMessageDelete(client, message);
     });
-    client.on('guildMemberAdd', (member) => logMemberJoin(client, member));
     client.on('guildMemberRemove', (member) => logMemberLeave(client, member));
     client.on('guildBanAdd', (ban) => logBan(client, ban));
 

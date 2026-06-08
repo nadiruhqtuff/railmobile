@@ -3,17 +3,12 @@ const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('listpublic')
-        .setDescription('Liste tous les scripts disponibles pour mettre un bot en ligne'),
+        .setDescription('Liste tous les scripts disponibles'),
 
-    async execute(interaction, client) {
+    async execute(interaction) {
         const db = require('../utils/database');
 
-        let scripts = [];
-        try {
-            scripts = db.listScripts ? db.listScripts() : [];
-        } catch (err) {
-            console.error('[listpublic] Erreur lors de la récupération des scripts:', err.message);
-        }
+        const scripts = db.listScripts();
 
         if (!scripts || scripts.length === 0) {
             return interaction.reply({
@@ -45,3 +40,4 @@ module.exports = {
         await interaction.reply({ embeds: [embed] });
     },
 };
+

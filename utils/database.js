@@ -1,124 +1,105 @@
-/**
- * database.js — Simple in-memory + JSON-backed store for scripts and bot sessions.
- */
-
 const fs = require('fs');
 const path = require('path');
 
-const DB_PATH = path.join(__dirname, '..', 'data.json');
+const DATA_DIR = path.join(__dirname, '..', 'data');
 
-// Load persisted data or start fresh
-function loadData() {
+function ensureDataDir() {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+
+function readJSON(filename) {
+    ensureDataDir();
+    const filePath = path.join(DATA_DIR, filename);
+    if (!fs.existsSync(filePath)) return {};
     try {
-        if (fs.existsSync(DB_PATH)) {
-            return JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
-        }
-    } catch (err) {
-        console.error('[DB] Failed to load data.json:', err.message);
-    }
-    return { scripts: {}, logChannels: {}, activeBots: {} };
-}
-
-function saveData(data) {
-    try {
-        fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2), 'utf8');
-    } catch (err) {
-        console.error('[DB] Failed to save data.json:', err.message);
+        return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    } catch {
+        return {};
     }
 }
 
-let data = loadData();
-
-// ─── Scripts ────────────────────────────────────────────────────────────────
-
-/**
- * Save a script by name.
- * @param {string} name   - Script identifier (lowercase)
- * @param {string} code   - Script source code
- * @param {string} lang   - Language hint: 'js', 'python', 'java', etc.
- */
-function setScript(name, code, lang = 'js') {
-    data.scripts[name.toLowerCase()] = { code, lang, createdAt: Date.now() };
-    saveData(data);
-}
-
-/**
- * Retrieve a script by name.
- * @param {string} name
- * @returns {{ code: string, lang: string, createdAt: number } | null}
- */
-function getScript(name) {
-    return data.scripts[name.toLowerCase()] || null;
-}
-
-/**
- * Delete a script by name.
- * @param {string} name
- * @returns {boolean} true if it existed and was deleted
- */
-function deleteScript(name) {
-    const key = name.toLowerCase();
-    if (!data.scripts[key]) return false;
-    delete data.scripts[key];
-    saveData(data);
-    return true;
-}
-
-/**
- * List all script names.
- * @returns {string[]}
- */
-function listScripts() {
-    return Object.keys(data.scripts);
-}
-
-// ─── Log Channels ────────────────────────────────────────────────────────────
-
-function setLogChannel(guildId, channelId) {
-    if (!data.logChannels) data.logChannels = {};
-    data.logChannels[guildId] = channelId;
-    saveData(data);
-}
-
-function getLogChannel(guildId) {
-    return (data.logChannels || {})[guildId] || null;
-}
-
-// ─── Active Bots ─────────────────────────────────────────────────────────────
-
-function setActiveBot(token, info) {
-    if (!data.activeBots) data.activeBots = {};
-    data.activeBots[token] = info;
-    saveData(data);
-}
-
-function getActiveBot(token) {
-    return (data.activeBots || {})[token] || null;
-}
-
-function removeActiveBot(token) {
-    if (data.activeBots && data.activeBots[token]) {
-        delete data.activeBots[token];
-        saveData(data);
-    }
-}
-
-function listActiveBots() {
-    return Object.entries(data.activeBots || {}).map(([token, info]) => ({ token, ...info }));
+function writeJSON(filename, data) {
+    ensureDataDir();
+    const filePath = path.join(DATA_DIR, filename);
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
 }
 
 module.exports = {
     // Scripts
-    setScript,
-    getScript,
-    deleteScript,
-    listScripts,
+    getScripts() {
+        return readJSON('scripts.json');
+    },
+    saveScript(name, code) {
+        const scripts = readJSON('scripts.json');
+        scripts[name.toLowerCase()] = { name, code, createdAt: Date.now() };
+        writeJSON('scripts.json', scripts);
+    },
+    getScript(name) {
+        const scripts = readJSON('scripts.json');
+        return scripts[name.toLowerCase()] || null;
+    },
+    deleteScript(name) {
+        const scripts = readJSON('scripts.json');
+        delete scripts[name.toLowerCase()];
+        writeJSON('scripts.json', scripts);
+    },
+    listScripts() {
+        const scripts = readJSON('scripts.json');
+        return Object.keys(scripts);
+    },
+
     // Log channels
-    setLogChannel,
-    getLogChannel,
-    // Active bots
-    setActiveBot,
-    getActiveBot,
-    removeActiveBot,
-    listActiveBots,
+    getLogChannels() {
+        return readJSON('logchannels.json');
+    },
+    setLogChannel(guildId, channelId) {
+        const channels = readJSON('logchannels.json');
+        channels[guildId] = channelId;
+        writeJSON('logchannels.json', channels);
+    },
+    getLogChannel(guildId) {
+        const channels = readJSON('logchannels.json');
+        return channels[guildId] || null;
+    },
+
+    // Ghostping
+    setGhostpingChannel(guildId, channelId) {
+        const ghostpings = readJSON('ghostpings.json');
+        ghostpings[guildId] = channelId;
+        writeJSON('ghostpings.json', ghostpings);
+    },
+    getGhostpingChannel(guildId) {
+        const ghostpings = readJSON('ghostpings.json');
+        return ghostpings[guildId] || null;
+    },
+
+    // Mutes
+    getMutes() {
+        return readJSON('mutes.json');
+    },
+    saveMute(guildId, userId, data) {
+        const mutes = readJSON('mutes.json');
+        if (!mutes[guildId]) mutes[guildId] = {};
+        mutes[guildId][userId] = data;
+        writeJSON('mutes.json', mutes);
+    },
+    removeMute(guildId, userId) {
+        const mutes = readJSON('mutes.json');
+        if (mutes[guildId]) {
+            delete mutes[guildId][userId];
+            writeJSON('mutes.json', mutes);
+        }
+    },
+
+    // Rules
+    getRules(guildId) {
+        const rules = readJSON('rules.json');
+        return rules[guildId] || null;
+    },
+    setRules(guildId, text) {
+        const rules = readJSON('rules.json');
+        rules[guildId] = text;
+        writeJSON('rules.json', rules);
+    }
 };
+

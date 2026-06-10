@@ -35,6 +35,7 @@ module.exports = {
         writeJSON('scripts.json', scripts);
     },
     getScript(name) {
+        if (!name) return null;
         const scripts = readJSON('scripts.json');
         return scripts[name.toLowerCase()] || null;
     },
